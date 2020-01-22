@@ -186,20 +186,21 @@ static __always_inline int sock4_update_revnat(struct bpf_sock_addr *ctx,
 }
 #endif /* ENABLE_HOST_SERVICES_UDP */
 
-static __always_inline bool sock4_is_external_ip(struct lb4_service *svc,
-						 struct lb4_key *key)
+static __always_inline bool sock4_skip_xlate(struct lb4_service *svc,
+					     struct lb4_key *key)
 {
-#ifdef ENABLE_EXTERNAL_IP
-	if (svc->external) {
+	if (svc->local_scope || lb4_svc_is_external_ip(svc)) {
 		struct remote_endpoint_info *info;
 
 		info = ipcache_lookup4(&IPCACHE_MAP, key->address,
 				       V4_CACHE_KEY_LEN);
-		if (info == NULL || (info->sec_label != HOST_ID &&
-				     info->sec_label != REMOTE_NODE_ID))
+		if (info == NULL ||
+		     (svc->local_scope && info->sec_label != HOST_ID) ||
+		    (!svc->local_scope && info->sec_label != HOST_ID &&
+					  info->sec_label != REMOTE_NODE_ID))
 			return true;
 	}
-#endif /* ENABLE_EXTERNAL_IP */
+
 	return false;
 }
 
@@ -279,7 +280,7 @@ static __always_inline int __sock4_xlate(struct bpf_sock_addr *ctx,
 	 * IP address. But do the service translation if the IP
 	 * is from the host.
 	 */
-	if (sock4_is_external_ip(svc, &key))
+	if (sock4_skip_xlate(svc, &key))
 		return -EPERM;
 
 	key.slave = (sock_local_cookie(ctx_full) % svc->count) + 1;
@@ -342,7 +343,7 @@ static __always_inline int __sock4_xlate_snd(struct bpf_sock_addr *ctx,
 	if (!svc)
 		return -ENXIO;
 
-	if (sock4_is_external_ip(svc, &lkey))
+	if (sock4_skip_xlate(svc, &lkey))
 		return -EPERM;
 
 	lkey.slave = (sock_local_cookie(ctx_full) % svc->count) + 1;
@@ -490,20 +491,21 @@ static __always_inline void ctx_set_v6_address(struct bpf_sock_addr *ctx,
 	ctx->user_ip6[3] = addr->p4;
 }
 
-static __always_inline bool sock6_is_external_ip(struct lb6_service *svc,
-						 struct lb6_key *key)
+static __always_inline bool sock6_skip_xlate(struct lb6_service *svc,
+					     struct lb6_key *key)
 {
-#ifdef ENABLE_EXTERNAL_IP
-	if (svc->external) {
+	if (svc->local_scope || lb6_svc_is_external_ip(svc)) {
 		struct remote_endpoint_info *info;
 
 		info = ipcache_lookup6(&IPCACHE_MAP, &key->address,
 				       V6_CACHE_KEY_LEN);
-		if (info == NULL || (info->sec_label != HOST_ID &&
-				     info->sec_label != REMOTE_NODE_ID))
+		if (info == NULL ||
+		     (svc->local_scope && info->sec_label != HOST_ID) ||
+		    (!svc->local_scope && info->sec_label != HOST_ID &&
+					  info->sec_label != REMOTE_NODE_ID))
 			return true;
 	}
-#endif /* ENABLE_EXTERNAL_IP */
+
 	return false;
 }
 
@@ -603,7 +605,7 @@ static __always_inline int __sock6_xlate(struct bpf_sock_addr *ctx)
 	if (!svc)
 		return -ENXIO;
 
-	if (sock6_is_external_ip(svc, &key))
+	if (sock6_skip_xlate(svc, &key))
 		return -EPERM;
 
 	key.slave = (sock_local_cookie(ctx) % svc->count) + 1;
@@ -699,7 +701,7 @@ static __always_inline int __sock6_xlate_snd(struct bpf_sock_addr *ctx)
 	if (!svc)
 		return -ENXIO;
 
-	if (sock6_is_external_ip(svc, &lkey))
+	if (sock6_skip_xlate(svc, &lkey))
 		return -EPERM;
 
 	lkey.slave = (sock_local_cookie(ctx) % svc->count) + 1;

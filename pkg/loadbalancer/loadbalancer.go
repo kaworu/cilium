@@ -58,10 +58,11 @@ const (
 	serviceFlagNone        = 0
 	serviceFlagExternalIPs = 1
 	serviceFlagNodePort    = 2
+	serviceFlagLocalScope  = 4
 )
 
 // CreateSvcFlag returns the ServiceFlags for all given SVCTypes.
-func CreateSvcFlag(svcTypes ...SVCType) ServiceFlags {
+func CreateSvcFlag(svcLocal bool, svcTypes ...SVCType) ServiceFlags {
 	var flags ServiceFlags
 	for _, svcType := range svcTypes {
 		switch svcType {
@@ -71,12 +72,15 @@ func CreateSvcFlag(svcTypes ...SVCType) ServiceFlags {
 			flags |= serviceFlagNodePort
 		}
 	}
+	if svcLocal {
+		flags |= serviceFlagLocalScope
+	}
 	return flags
 }
 
 // IsSvcType returns true if the serviceFlags is the given SVCType.
-func (s ServiceFlags) IsSvcType(svcType SVCType) bool {
-	return s&CreateSvcFlag(svcType) != 0
+func (s ServiceFlags) IsSvcType(svcLocal bool, svcType SVCType) bool {
+	return s&CreateSvcFlag(svcLocal, svcType) != 0
 }
 
 // ServiceFlags returns a service type from the flags
@@ -96,13 +100,16 @@ func (s ServiceFlags) String() string {
 	var strTypes []string
 	typeSet := false
 	for _, svcType := range []SVCType{SVCTypeExternalIPs, SVCTypeNodePort} {
-		if s.IsSvcType(svcType) {
+		if s.IsSvcType(false, svcType) {
 			strTypes = append(strTypes, string(svcType))
 			typeSet = true
 		}
 	}
 	if !typeSet {
 		strTypes = append(strTypes, string(SVCTypeClusterIP))
+	}
+	if s&serviceFlagLocalScope != 0 {
+		strTypes = append(strTypes, string(SVCTrafficPolicyLocal))
 	}
 	return strings.Join(strTypes, ", ")
 }
