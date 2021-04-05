@@ -13,7 +13,7 @@ type Options struct {
 	DisableHTTPS bool
 }
 
-// Resolver STS endpoint resolver
+// Resolver SSO endpoint resolver
 type Resolver struct {
 	partitions endpoints.Partitions
 }
@@ -56,60 +56,63 @@ var defaultPartitions = endpoints.Partitions{
 	{
 		ID: "aws",
 		Defaults: endpoints.Endpoint{
-			Hostname:          "sts.{region}.amazonaws.com",
+			Hostname:          "portal.sso.{region}.amazonaws.com",
 			Protocols:         []string{"https"},
 			SignatureVersions: []string{"v4"},
 		},
 		RegionRegex:    partitionRegexp.Aws,
 		IsRegionalized: true,
 		Endpoints: endpoints.Endpoints{
-			"af-south-1":     endpoints.Endpoint{},
-			"ap-east-1":      endpoints.Endpoint{},
-			"ap-northeast-1": endpoints.Endpoint{},
-			"ap-northeast-2": endpoints.Endpoint{},
-			"ap-northeast-3": endpoints.Endpoint{},
-			"ap-south-1":     endpoints.Endpoint{},
-			"ap-southeast-1": endpoints.Endpoint{},
-			"ap-southeast-2": endpoints.Endpoint{},
-			"aws-global": endpoints.Endpoint{
-				Hostname: "sts.amazonaws.com",
+			"ap-southeast-1": endpoints.Endpoint{
+				Hostname: "portal.sso.ap-southeast-1.amazonaws.com",
+				CredentialScope: endpoints.CredentialScope{
+					Region: "ap-southeast-1",
+				},
+			},
+			"ap-southeast-2": endpoints.Endpoint{
+				Hostname: "portal.sso.ap-southeast-2.amazonaws.com",
+				CredentialScope: endpoints.CredentialScope{
+					Region: "ap-southeast-2",
+				},
+			},
+			"ca-central-1": endpoints.Endpoint{
+				Hostname: "portal.sso.ca-central-1.amazonaws.com",
+				CredentialScope: endpoints.CredentialScope{
+					Region: "ca-central-1",
+				},
+			},
+			"eu-central-1": endpoints.Endpoint{
+				Hostname: "portal.sso.eu-central-1.amazonaws.com",
+				CredentialScope: endpoints.CredentialScope{
+					Region: "eu-central-1",
+				},
+			},
+			"eu-west-1": endpoints.Endpoint{
+				Hostname: "portal.sso.eu-west-1.amazonaws.com",
+				CredentialScope: endpoints.CredentialScope{
+					Region: "eu-west-1",
+				},
+			},
+			"eu-west-2": endpoints.Endpoint{
+				Hostname: "portal.sso.eu-west-2.amazonaws.com",
+				CredentialScope: endpoints.CredentialScope{
+					Region: "eu-west-2",
+				},
+			},
+			"us-east-1": endpoints.Endpoint{
+				Hostname: "portal.sso.us-east-1.amazonaws.com",
 				CredentialScope: endpoints.CredentialScope{
 					Region: "us-east-1",
 				},
 			},
-			"ca-central-1": endpoints.Endpoint{},
-			"eu-central-1": endpoints.Endpoint{},
-			"eu-north-1":   endpoints.Endpoint{},
-			"eu-south-1":   endpoints.Endpoint{},
-			"eu-west-1":    endpoints.Endpoint{},
-			"eu-west-2":    endpoints.Endpoint{},
-			"eu-west-3":    endpoints.Endpoint{},
-			"me-south-1":   endpoints.Endpoint{},
-			"sa-east-1":    endpoints.Endpoint{},
-			"us-east-1":    endpoints.Endpoint{},
-			"us-east-1-fips": endpoints.Endpoint{
-				Hostname: "sts-fips.us-east-1.amazonaws.com",
-				CredentialScope: endpoints.CredentialScope{
-					Region: "us-east-1",
-				},
-			},
-			"us-east-2": endpoints.Endpoint{},
-			"us-east-2-fips": endpoints.Endpoint{
-				Hostname: "sts-fips.us-east-2.amazonaws.com",
+			"us-east-2": endpoints.Endpoint{
+				Hostname: "portal.sso.us-east-2.amazonaws.com",
 				CredentialScope: endpoints.CredentialScope{
 					Region: "us-east-2",
 				},
 			},
-			"us-west-1": endpoints.Endpoint{},
-			"us-west-1-fips": endpoints.Endpoint{
-				Hostname: "sts-fips.us-west-1.amazonaws.com",
-				CredentialScope: endpoints.CredentialScope{
-					Region: "us-west-1",
-				},
-			},
-			"us-west-2": endpoints.Endpoint{},
-			"us-west-2-fips": endpoints.Endpoint{
-				Hostname: "sts-fips.us-west-2.amazonaws.com",
+			"us-west-2": endpoints.Endpoint{
+				Hostname: "portal.sso.us-west-2.amazonaws.com",
 				CredentialScope: endpoints.CredentialScope{
 					Region: "us-west-2",
 				},
@@ -119,67 +122,41 @@ var defaultPartitions = endpoints.Partitions{
 	{
 		ID: "aws-cn",
 		Defaults: endpoints.Endpoint{
-			Hostname:          "sts.{region}.amazonaws.com.cn",
+			Hostname:          "portal.sso.{region}.amazonaws.com.cn",
 			Protocols:         []string{"https"},
 			SignatureVersions: []string{"v4"},
 		},
 		RegionRegex:    partitionRegexp.AwsCn,
 		IsRegionalized: true,
-		Endpoints: endpoints.Endpoints{
-			"cn-north-1":     endpoints.Endpoint{},
-			"cn-northwest-1": endpoints.Endpoint{},
-		},
 	},
 	{
 		ID: "aws-iso",
 		Defaults: endpoints.Endpoint{
-			Hostname:          "sts.{region}.c2s.ic.gov",
+			Hostname:          "portal.sso.{region}.c2s.ic.gov",
 			Protocols:         []string{"https"},
 			SignatureVersions: []string{"v4"},
 		},
 		RegionRegex:    partitionRegexp.AwsIso,
 		IsRegionalized: true,
-		Endpoints: endpoints.Endpoints{
-			"us-iso-east-1": endpoints.Endpoint{},
-		},
 	},
 	{
 		ID: "aws-iso-b",
 		Defaults: endpoints.Endpoint{
-			Hostname:          "sts.{region}.sc2s.sgov.gov",
+			Hostname:          "portal.sso.{region}.sc2s.sgov.gov",
 			Protocols:         []string{"https"},
 			SignatureVersions: []string{"v4"},
 		},
 		RegionRegex:    partitionRegexp.AwsIsoB,
 		IsRegionalized: true,
-		Endpoints: endpoints.Endpoints{
-			"us-isob-east-1": endpoints.Endpoint{},
-		},
 	},
 	{
 		ID: "aws-us-gov",
 		Defaults: endpoints.Endpoint{
-			Hostname:          "sts.{region}.amazonaws.com",
+			Hostname:          "portal.sso.{region}.amazonaws.com",
 			Protocols:         []string{"https"},
 			SignatureVersions: []string{"v4"},
 		},
 		RegionRegex:    partitionRegexp.AwsUsGov,
 		IsRegionalized: true,
-		Endpoints: endpoints.Endpoints{
-			"us-gov-east-1": endpoints.Endpoint{},
-			"us-gov-east-1-fips": endpoints.Endpoint{
-				Hostname: "sts.us-gov-east-1.amazonaws.com",
-				CredentialScope: endpoints.CredentialScope{
-					Region: "us-gov-east-1",
-				},
-			},
-			"us-gov-west-1": endpoints.Endpoint{},
-			"us-gov-west-1-fips": endpoints.Endpoint{
-				Hostname: "sts.us-gov-west-1.amazonaws.com",
-				CredentialScope: endpoints.CredentialScope{
-					Region: "us-gov-west-1",
-				},
-			},
-		},
 	},
 }
