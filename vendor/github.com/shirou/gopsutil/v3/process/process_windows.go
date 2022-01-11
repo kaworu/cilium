@@ -1,3 +1,4 @@
+//go:build windows
 // +build windows
 
 package process
@@ -9,8 +10,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"strings"
 	"syscall"
+	"time"
+	"unicode/utf16"
 	"unsafe"
 
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -67,11 +71,9 @@ type systemInfo struct {
 }
 
 // Memory_info_ex is different between OSes
-type MemoryInfoExStat struct {
-}
+type MemoryInfoExStat struct{}
 
-type MemoryMapsStat struct {
-}
+type MemoryMapsStat struct{}
 
 // ioCounters is an equivalent representation of IO_COUNTERS in the Windows API.
 // https://docs.microsoft.com/windows/win32/api/winnt/ns-winnt-io_counters
@@ -103,75 +105,75 @@ type processBasicInformation64 struct {
 }
 
 type processEnvironmentBlock32 struct {
-	Reserved1 [2]uint8
-	BeingDebugged uint8
-	Reserved2 uint8
-	Reserved3 [2]uint32
-	Ldr uint32
+	Reserved1         [2]uint8
+	BeingDebugged     uint8
+	Reserved2         uint8
+	Reserved3         [2]uint32
+	Ldr               uint32
 	ProcessParameters uint32
 	// More fields which we don't use so far
 }
 
 type processEnvironmentBlock64 struct {
-	Reserved1 [2]uint8
-	BeingDebugged uint8
-	Reserved2 uint8
-	_ [4]uint8 // padding, since we are 64 bit, the next pointer is 64 bit aligned (when compiling for 32 bit, this is not the case without manual padding)
-	Reserved3 [2]uint64
-	Ldr uint64
+	Reserved1         [2]uint8
+	BeingDebugged     uint8
+	Reserved2         uint8
+	_                 [4]uint8 // padding, since we are 64 bit, the next pointer is 64 bit aligned (when compiling for 32 bit, this is not the case without manual padding)
+	Reserved3         [2]uint64
+	Ldr               uint64
 	ProcessParameters uint64
 	// More fields which we don't use so far
 }
 
 type rtlUserProcessParameters32 struct {
-	Reserved1 [16]uint8
-	ConsoleHandle uint32
-	ConsoleFlags uint32
-	StdInputHandle uint32
-	StdOutputHandle uint32
-	StdErrorHandle uint32
+	Reserved1                      [16]uint8
+	ConsoleHandle                  uint32
+	ConsoleFlags                   uint32
+	StdInputHandle                 uint32
+	StdOutputHandle                uint32
+	StdErrorHandle                 uint32
 	CurrentDirectoryPathNameLength uint16
-	_ uint16 // Max Length
-	CurrentDirectoryPathAddress uint32
-	CurrentDirectoryHandle uint32
-	DllPathNameLength uint16
-	_ uint16 // Max Length
-	DllPathAddress uint32
-	ImagePathNameLength uint16
-	_ uint16 // Max Length
-	ImagePathAddress uint32
-	CommandLineLength uint16
-	_ uint16 // Max Length
-	CommandLineAddress uint32
-	EnvironmentAddress uint32
+	_                              uint16 // Max Length
+	CurrentDirectoryPathAddress    uint32
+	CurrentDirectoryHandle         uint32
+	DllPathNameLength              uint16
+	_                              uint16 // Max Length
+	DllPathAddress                 uint32
+	ImagePathNameLength            uint16
+	_                              uint16 // Max Length
+	ImagePathAddress               uint32
+	CommandLineLength              uint16
+	_                              uint16 // Max Length
+	CommandLineAddress             uint32
+	EnvironmentAddress             uint32
 	// More fields which we don't use so far
 }
 
 type rtlUserProcessParameters64 struct {
-	Reserved1 [16]uint8
-	ConsoleHandle uint64
-	ConsoleFlags uint64
-	StdInputHandle uint64
-	StdOutputHandle uint64
-	StdErrorHandle uint64
+	Reserved1                      [16]uint8
+	ConsoleHandle                  uint64
+	ConsoleFlags                   uint64
+	StdInputHandle                 uint64
+	StdOutputHandle                uint64
+	StdErrorHandle                 uint64
 	CurrentDirectoryPathNameLength uint16
-	_ uint16 // Max Length
-	_ uint32 // Padding
-	CurrentDirectoryPathAddress uint64
-	CurrentDirectoryHandle uint64
-	DllPathNameLength uint16
-	_ uint16 // Max Length
-	_ uint32 // Padding
-	DllPathAddress uint64
-	ImagePathNameLength uint16
-	_ uint16 // Max Length
-	_ uint32 // Padding
-	ImagePathAddress uint64
-	CommandLineLength uint16
-	_ uint16 // Max Length
-	_ uint32 // Padding
-	CommandLineAddress uint64
-	EnvironmentAddress uint64
+	_                              uint16 // Max Length
+	_                              uint32 // Padding
+	CurrentDirectoryPathAddress    uint64
+	CurrentDirectoryHandle         uint64
+	DllPathNameLength              uint16
+	_                              uint16 // Max Length
+	_                              uint32 // Padding
+	DllPathAddress                 uint64
+	ImagePathNameLength            uint16
+	_                              uint16 // Max Length
+	_                              uint32 // Padding
+	ImagePathAddress               uint64
+	CommandLineLength              uint16
+	_                              uint16 // Max Length
+	_                              uint32 // Padding
+	CommandLineAddress             uint64
+	EnvironmentAddress             uint64
 	// More fields which we don't use so far
 }
 
@@ -192,8 +194,10 @@ type winTokenPriviledges struct {
 	Privileges     [1]winLUIDAndAttributes
 }
 
-type winLong int32
-type winDWord uint32
+type (
+	winLong  int32
+	winDWord uint32
+)
 
 func init() {
 	var systemInfo systemInfo
@@ -258,7 +262,6 @@ func pidsWithContext(ctx context.Context) ([]int32, error) {
 		return ret, nil
 
 	}
-
 }
 
 func PidExistsWithContext(ctx context.Context, pid int32) (bool, error) {
@@ -428,7 +431,7 @@ func (p *Process) CwdWithContext(_ context.Context) (string, error) {
 		}
 	}
 
-	//if we reach here, we have no cwd
+	// if we reach here, we have no cwd
 	return "", nil
 }
 
@@ -654,7 +657,93 @@ func (p *Process) ChildrenWithContext(ctx context.Context) ([]*Process, error) {
 }
 
 func (p *Process) OpenFilesWithContext(ctx context.Context) ([]OpenFilesStat, error) {
-	return nil, common.ErrNotImplementedError
+	files := make([]OpenFilesStat, 0)
+	fileExists := make(map[string]bool)
+
+	process, err := windows.OpenProcess(common.ProcessQueryInformation, false, uint32(p.Pid))
+	if err != nil {
+		return nil, err
+	}
+
+	buffer := make([]byte, 1024)
+	var size uint32
+
+	st := common.CallWithExpandingBuffer(
+		func() common.NtStatus {
+			return common.NtQuerySystemInformation(
+				common.SystemExtendedHandleInformationClass,
+				&buffer[0],
+				uint32(len(buffer)),
+				&size,
+			)
+		},
+		&buffer,
+		&size,
+	)
+	if st.IsError() {
+		return nil, st.Error()
+	}
+
+	handlesList := (*common.SystemExtendedHandleInformation)(unsafe.Pointer(&buffer[0]))
+	handles := make([]common.SystemExtendedHandleTableEntryInformation, int(handlesList.NumberOfHandles))
+	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&handles))
+	hdr.Data = uintptr(unsafe.Pointer(&handlesList.Handles[0]))
+
+	currentProcess, err := windows.GetCurrentProcess()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, handle := range handles {
+		var file uintptr
+		if int32(handle.UniqueProcessId) != p.Pid {
+			continue
+		}
+		if windows.DuplicateHandle(process, windows.Handle(handle.HandleValue), currentProcess, (*windows.Handle)(&file),
+			0, true, windows.DUPLICATE_SAME_ACCESS) != nil {
+			continue
+		}
+		fileType, _ := windows.GetFileType(windows.Handle(file))
+		if fileType != windows.FILE_TYPE_DISK {
+			continue
+		}
+
+		var fileName string
+		ch := make(chan struct{})
+
+		go func() {
+			var buf [syscall.MAX_LONG_PATH]uint16
+			n, err := windows.GetFinalPathNameByHandle(windows.Handle(file), &buf[0], syscall.MAX_LONG_PATH, 0)
+			if err != nil {
+				return
+			}
+
+			fileName = string(utf16.Decode(buf[:n]))
+			ch <- struct{}{}
+		}()
+
+		select {
+		case <-time.NewTimer(100 * time.Millisecond).C:
+			continue
+		case <-ch:
+			fileInfo, _ := os.Stat(fileName)
+			if fileInfo.IsDir() {
+				continue
+			}
+
+			if _, exists := fileExists[fileName]; !exists {
+				files = append(files, OpenFilesStat{
+					Path: fileName,
+					Fd:   uint64(file),
+				})
+				fileExists[fileName] = true
+			}
+		case <-ctx.Done():
+			return files, ctx.Err()
+		}
+	}
+
+	return files, nil
 }
 
 func (p *Process) ConnectionsWithContext(ctx context.Context) ([]net.ConnectionStat, error) {
@@ -857,7 +946,6 @@ func getProcessCPUTimes(pid int32) (SYSTEM_TIMES, error) {
 	return times, err
 }
 
-
 func getUserProcessParams32(handle windows.Handle) (rtlUserProcessParameters32, error) {
 	pebAddress, err := queryPebAddress(syscall.Handle(handle), true)
 	if err != nil {
@@ -930,14 +1018,14 @@ func is32BitProcess(h windows.Handle) bool {
 				procIs32Bits = true
 			}
 		} else {
-			//if the OS does not support the call, we fallback into the bitness of the app
+			// if the OS does not support the call, we fallback into the bitness of the app
 			if unsafe.Sizeof(wow64) == 4 {
 				procIs32Bits = true
 			}
 		}
 
 	default:
-		//for other unknown platforms, we rely on process platform
+		// for other unknown platforms, we rely on process platform
 		if unsafe.Sizeof(processorArchitecture) == 8 {
 			procIs32Bits = false
 		} else {
@@ -979,14 +1067,14 @@ func getProcessEnvironmentVariables(pid int32, ctx context.Context) ([]string, e
 		is32BitProcess: procIs32Bits,
 		offset:         processParameterBlockAddress,
 	})
-	envvarScanner.Split(func(data []byte, atEOF bool) (advance int, token []byte, err error){
+	envvarScanner.Split(func(data []byte, atEOF bool) (advance int, token []byte, err error) {
 		if atEOF && len(data) == 0 {
 			return 0, nil, nil
 		}
 		// Check for UTF-16 zero character
-		for i := 0; i < len(data) - 1; i+=2 {
+		for i := 0; i < len(data)-1; i += 2 {
 			if data[i] == 0 && data[i+1] == 0 {
-				return i+2, data[0:i], nil
+				return i + 2, data[0:i], nil
 			}
 		}
 		if atEOF {
@@ -1016,9 +1104,9 @@ func getProcessEnvironmentVariables(pid int32, ctx context.Context) ([]string, e
 }
 
 type processReader struct {
-	processHandle windows.Handle
+	processHandle  windows.Handle
 	is32BitProcess bool
-	offset uint64
+	offset         uint64
 }
 
 func (p *processReader) Read(buf []byte) (int, error) {
@@ -1071,7 +1159,7 @@ func getProcessCommandLine(pid int32) (string, error) {
 		}
 	}
 
-	//if we reach here, we have no command line
+	// if we reach here, we have no command line
 	return "", nil
 }
 
