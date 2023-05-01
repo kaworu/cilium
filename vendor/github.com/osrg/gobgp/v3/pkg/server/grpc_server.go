@@ -17,6 +17,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -28,7 +29,6 @@ import (
 	"time"
 
 	"github.com/dgryski/go-farm"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	apb "google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -651,6 +651,7 @@ func newNeighborFromAPIStruct(a *api.Peer) (*config.Neighbor, error) {
 		pconf.Config.Vrf = a.Conf.Vrf
 		pconf.AsPathOptions.Config.AllowOwnAs = uint8(a.Conf.AllowOwnAsn)
 		pconf.AsPathOptions.Config.ReplacePeerAs = a.Conf.ReplacePeerAsn
+		pconf.Config.SendSoftwareVersion = a.Conf.SendSoftwareVersion
 
 		switch a.Conf.RemovePrivate {
 		case api.RemovePrivate_REMOVE_ALL:
